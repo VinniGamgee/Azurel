@@ -1,0 +1,126 @@
+name: Azurel Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'compat/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: azurel-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+      - name: Import pinned Torzu source and publish compatibility branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e CMakeLists.txt
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          staging=$(mktemp -d)
+          cp -R .azurel-bootstrap/. "$staging/"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --depth=1 https://github.com/markprice4675/torzu.git 6ead429195ef12f35a5818eba6d76f54d5421cec
+          test "$(git rev-parse FETCH_HEAD)" = 6ead429195ef12f35a5818eba6d76f54d5421cec
+          git read-tree --reset -u FETCH_HEAD
+          mkdir -p .github/workflows docs/azurel tools/azurel
+          if [ -d .github/workflows ]; then
+            find .github/workflows -maxdepth 1 -type f -delete
+          fi
+          cp "$staging/android.yml" .github/workflows/android.yml
+          cp "$staging/COMPATIBILITY.md" docs/azurel/COMPATIBILITY.md
+          cp "$staging/verify-baseline.py" tools/azurel/verify-baseline.py
+          if [ -f README.md ]; then mv README.md README.upstream.md; fi
+          cp "$staging/README.md" README.md
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          p = Path('src/android/app/build.gradle.kts')
+          s = p.read_text()
+          assert 'applicationId = "org.yuzu.yuzu_emu"' in s
+          p.write_text(s.replace('applicationId = "org.yuzu.yuzu_emu"', 'applicationId = "app.azurel.emu"'))
+          p = Path('src/android/app/src/main/res/values/strings.xml')
+          s = p.read_text()
+          assert '<string name="app_name" translatable="false">yuzu</string>' in s
+          p.write_text(s.replace('<string name="app_name" translatable="false">yuzu</string>', '<string name="app_name" translatable="false">Azurel</string>'))
+          PYTHON
+          git add --all
+          git commit -m "Import Torzu 6ead429 baseline with Azurel Android packaging" -m "Source: https://github.com/markprice4675/torzu/tree/6ead429195ef12f35a5818eba6d76f54d5421cec. Original licenses, credits and pinned submodules retained."
+          git push origin HEAD:main
+          git switch -c compat/totk-1.4.x
+          git apply --check "$staging/compat.patch"
+          git apply "$staging/compat.patch"
+          git diff --check
+          git add src
+          git commit -m "Backport audio REV12/15 and SDK20 HID/services for TOTK 1.4.x testing" -m "Adapted from Eden a3ef2cc1838a007a2f424e88212aa6f1eb93eab3. Upstream credits LotP (Ryubing) and Zephyron (Citron). Preserve Torzu graphics source. Runtime validation pending." -m "Co-authored-by: unknown <sahyno1996@gmail.com>" -m "Co-authored-by: Zephyron <zephyron@citron-emu.org>" -m "Co-authored-by: Shinmegumi <shinmegumi@eden-emu.dev>"
+          python3 tools/azurel/verify-baseline.py
+          git push -u origin compat/totk-1.4.x
+          git submodule update --init --recursive
+      - name: Verify Torzu graphics baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/azurel/verify-baseline.py
+          git diff --check
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl git pkg-config glslang-tools zip ninja-build
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;26.3.11579264" "cmake;3.22.1"
+      - name: Restore vcpkg port history
+        working-directory: externals/vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --unshallow --tags origin
+          else
+            git fetch --tags origin
+          fi
+          git cat-file -e '65fe4dea09fc09a30e6ece9ac19edb7ad6a49601^{tree}'
+          git cat-file -e '7d7bef305b7affebc6f3ccacd12874ebd4fbfc50^{tree}'
+      - name: Bootstrap vcpkg
+        run: |
+          chmod +x externals/vcpkg/bootstrap-vcpkg.sh
+          ./externals/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      - name: Build Android release
+        working-directory: src/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+      - name: Package APK and source information
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp src/android/app/build/outputs/apk/mainline/release/app-mainline-release.apk dist/Azurel.apk
+          git rev-parse HEAD > dist/SOURCE-COMMIT.txt
+          git submodule status --recursive > dist/SUBMODULES.txt
+          cp docs/azurel/COMPATIBILITY.md dist/
+          cd dist
+          sha256sum Azurel.apk > APK.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Azurel-Android-${{ github.run_number }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
