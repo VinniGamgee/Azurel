@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstring>
+
 #include "core/file_sys/nca_metadata.h"
 #include "core/file_sys/registered_cache.h"
 #include "core/hle/service/cmif_serialization.h"
@@ -125,6 +127,7 @@ IApplicationManagerInterface::IApplicationManagerInterface(Core::System& system_
         {406, nullptr, "GetApplicationControlProperty"},
         {407, nullptr, "ListApplicationTitle"},
         {408, nullptr, "ListApplicationIcon"},
+        {419, D<&IApplicationManagerInterface::RequestDownloadApplicationControlDataInBackground>, "RequestDownloadApplicationControlDataInBackground"},
         {502, nullptr, "RequestCheckGameCardRegistration"},
         {503, nullptr, "RequestGameCardRegistrationGoldPoint"},
         {504, nullptr, "RequestRegisterGameCard"},
@@ -207,6 +210,7 @@ IApplicationManagerInterface::IApplicationManagerInterface(Core::System& system_
         {1703, nullptr, "GetApplicationViewDownloadErrorContext"},
         {1704, D<&IApplicationManagerInterface::GetApplicationViewWithPromotionInfo>, "GetApplicationViewWithPromotionInfo"},
         {1705, nullptr, "IsPatchAutoDeletableApplication"},
+        {1706, D<&IApplicationManagerInterface::Unknown1706>, "Unknown1706"},
         {1800, nullptr, "IsNotificationSetupCompleted"},
         {1801, nullptr, "GetLastNotificationInfoCount"},
         {1802, nullptr, "ListLastNotificationInfo"},
@@ -303,6 +307,7 @@ IApplicationManagerInterface::IApplicationManagerInterface(Core::System& system_
         {3013, nullptr, "IsGameCardEnabled"},
         {3014, nullptr, "IsLocalContentShareEnabled"},
         {3050, nullptr, "ListAssignELicenseTaskResult"},
+        {4053, D<&IApplicationManagerInterface::Unknown4053>, "Unknown4053"},
         {9999, nullptr, "GetApplicationCertificate"},
     };
     // clang-format on
@@ -513,6 +518,42 @@ Result IApplicationManagerInterface::GetApplicationTerminateResult(Out<Result> o
                                                                    u64 application_id) {
     LOG_WARNING(Service_NS, "(STUBBED) called. application_id={:016X}", application_id);
     *out_result = ResultSuccess;
+    R_SUCCEED();
+}
+
+Result IApplicationManagerInterface::RequestDownloadApplicationControlDataInBackground(
+    u64 unk, u64 application_id) {
+    LOG_WARNING(Service_NS, "(STUBBED), app={:016X} unk={}", application_id, unk);
+    R_SUCCEED();
+}
+
+Result IApplicationManagerInterface::Unknown1706(
+    OutBuffer<BufferAttr_HipcAutoSelect> out_buffer_58,
+    InBuffer<BufferAttr_HipcMapAlias> in_buffer_8) {
+    LOG_WARNING(Service_NS, "(STUBBED) Unknown1706 called: out_size={} in_size={}",
+                out_buffer_58.size(), in_buffer_8.size());
+
+    if (out_buffer_58.size() < 0x58 || in_buffer_8.size() < 0x8) {
+        R_THROW(ResultUnknown);
+    }
+
+    u64 application_id = 0;
+    std::memcpy(&application_id, in_buffer_8.data(), sizeof(u64));
+
+    ApplicationView view{};
+    view.application_id = application_id;
+    view.unk = 0x70000;
+    view.flags = 0x401f17;
+
+    std::memset(out_buffer_58.data(), 0, out_buffer_58.size());
+    std::memcpy(out_buffer_58.data(), &view, sizeof(ApplicationView));
+
+
+    R_SUCCEED();
+}
+
+Result IApplicationManagerInterface::Unknown4053() {
+    LOG_WARNING(Service_NS, "(STUBBED) called.");
     R_SUCCEED();
 }
 

@@ -50,6 +50,11 @@ public:
     Result CheckApplicationLaunchVersion(u64 application_id);
     Result GetApplicationTerminateResult(Out<Result> out_result, u64 application_id);
 
+    Result Unknown4053();
+    Result RequestDownloadApplicationControlDataInBackground(u64 unk, u64 application_id);
+    Result Unknown1706(OutBuffer<BufferAttr_HipcAutoSelect> out_buffer_58,
+                       InBuffer<BufferAttr_HipcMapAlias> in_buffer_8);
+
 private:
     KernelHelpers::ServiceContext service_context;
     Event record_update_system_event;
