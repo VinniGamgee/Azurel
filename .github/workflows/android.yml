@@ -31,6 +31,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           staging=$(mktemp -d)
           cp -R .azurel-bootstrap/. "$staging/"
+          cp .github/workflows/android.yml "$staging/active-workflow.yml"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch --depth=1 https://github.com/markprice4675/torzu.git 6ead429195ef12f35a5818eba6d76f54d5421cec
@@ -40,7 +41,7 @@ jobs:
           if [ -d .github/workflows ]; then
             find .github/workflows -maxdepth 1 -type f -delete
           fi
-          cp "$staging/android.yml" .github/workflows/android.yml
+          cp "$staging/active-workflow.yml" .github/workflows/android.yml
           cp "$staging/COMPATIBILITY.md" docs/azurel/COMPATIBILITY.md
           cp "$staging/verify-baseline.py" tools/azurel/verify-baseline.py
           if [ -f README.md ]; then mv README.md README.upstream.md; fi
