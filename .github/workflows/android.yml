@@ -6,7 +6,7 @@ on:
     branches: [main, 'compat/**']
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: azurel-android-${{ github.ref }}
@@ -21,54 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive
           fetch-depth: 1
-      - name: Import pinned Torzu source and publish compatibility branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          test ! -e CMakeLists.txt
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          staging=$(mktemp -d)
-          cp -R .azurel-bootstrap/. "$staging/"
-          cp .github/workflows/android.yml "$staging/active-workflow.yml"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --depth=1 https://github.com/markprice4675/torzu.git 6ead429195ef12f35a5818eba6d76f54d5421cec
-          test "$(git rev-parse FETCH_HEAD)" = 6ead429195ef12f35a5818eba6d76f54d5421cec
-          git read-tree --reset -u FETCH_HEAD
-          mkdir -p .github/workflows docs/azurel tools/azurel
-          if [ -d .github/workflows ]; then
-            find .github/workflows -maxdepth 1 -type f -delete
-          fi
-          cp "$staging/active-workflow.yml" .github/workflows/android.yml
-          cp "$staging/COMPATIBILITY.md" docs/azurel/COMPATIBILITY.md
-          cp "$staging/verify-baseline.py" tools/azurel/verify-baseline.py
-          if [ -f README.md ]; then mv README.md README.upstream.md; fi
-          cp "$staging/README.md" README.md
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          p = Path('src/android/app/build.gradle.kts')
-          s = p.read_text()
-          assert 'applicationId = "org.yuzu.yuzu_emu"' in s
-          p.write_text(s.replace('applicationId = "org.yuzu.yuzu_emu"', 'applicationId = "app.azurel.emu"'))
-          p = Path('src/android/app/src/main/res/values/strings.xml')
-          s = p.read_text()
-          assert '<string name="app_name" translatable="false">yuzu</string>' in s
-          p.write_text(s.replace('<string name="app_name" translatable="false">yuzu</string>', '<string name="app_name" translatable="false">Azurel</string>'))
-          PYTHON
-          git add --all
-          git commit -m "Import Torzu 6ead429 baseline with Azurel Android packaging" -m "Source: https://github.com/markprice4675/torzu/tree/6ead429195ef12f35a5818eba6d76f54d5421cec. Original licenses, credits and pinned submodules retained."
-          git push origin HEAD:main
-          git switch -c compat/totk-1.4.x
-          git apply --check "$staging/compat.patch"
-          git apply "$staging/compat.patch"
-          git diff --check
-          git add src
-          git commit -m "Backport audio REV12/15 and SDK20 HID/services for TOTK 1.4.x testing" -m "Adapted from Eden a3ef2cc1838a007a2f424e88212aa6f1eb93eab3. Upstream credits LotP (Ryubing) and Zephyron (Citron). Preserve Torzu graphics source. Runtime validation pending." -m "Co-authored-by: unknown <sahyno1996@gmail.com>" -m "Co-authored-by: Zephyron <zephyron@citron-emu.org>" -m "Co-authored-by: Shinmegumi <shinmegumi@eden-emu.dev>"
-          python3 tools/azurel/verify-baseline.py
-          git push -u origin compat/totk-1.4.x
-          git submodule update --init --recursive
       - name: Verify Torzu graphics baseline
         shell: bash
         run: |
